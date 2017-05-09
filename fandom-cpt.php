@@ -13,19 +13,26 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 defined( 'ABSPATH' ) or die( 'No script kiddies please!' );
 
 function init_posttypes() {
+  // Register Custom Post Type
   register_post_type( 'news',
 		array(
 			'labels' => array(
-				'name' => __( 'News' )
+				'name' => __( 'News' ),
+        'singular_name' => __('News'),
+        'items_list'            => __( 'Items list', 'text_domain' ),
 			),
 			'public' => true,
 			'has_archive' => true,
 			'rewrite' => array('slug' => 'news'),
-      'capability_type' => array('news', 'news'),
+      'capability_type' => 'news_post',
       'hierarchical' => false,
       'supports' => array('title', 'editor', 'comments', 'excerpt'),
       'taxonomies' => array( 'news-tags' ),
-      'menu_position' => 5
+      'menu_position' => 5,
+      'map_meta_cap' => true,
+      'capabilities' => array(
+        'delete_post' => 'delete_news_post'
+      )
 		)
   );
 	register_post_type( 'fanfic',
@@ -38,13 +45,58 @@ function init_posttypes() {
 			'has_archive' => true,
 			'rewrite' => array('slug' => 'fanfic'),
       'hierarchical' => true,
-      'capability_type' => array('fanfic', 'fanfics'),
+      'capability_type' => 'fanfic',
       'supports' => array('title', 'editor', 'comments', 'excerpt'),
       'taxonomies' => array( 'fandom-tags', 'fandom-genre', 'fandom-series', 'fandom-warning' ),
       'show_in_admin_bar' => true,
-      'menu_position' => 6
+      'menu_position' => 6,
+      'capabilities' => array(
+        'delete_post' => 'delete_fanfic'
+      ),
+      'map_meta_cap' => true,
 		)
 	);
+}
+
+function register_meta_boxes() {
+  add_meta_box( 'fanfic-author-notes', 'Author Notes', 'metabox_author_notes', 'fanfic', 'normal', 'high');
+}
+
+function metabox_author_notes($post) {
+  // Use nonce for verification
+  wp_nonce_field( plugin_basename( __FILE__ ), 'author_notes_nonce' );
+
+  $field_value = get_post_meta( $post->ID, 'author_notes', false );
+  $default = isset($field_value[0]) ? $field_value[0] : '';
+  wp_editor( $default, 'author_notes' , array(
+    'media_buttons' => false,
+    'textarea_rows' => 5,
+  ));
+}
+
+function save_author_notes($post_id) {
+  // verify if this is an auto save routine.
+  // If it is our form has not been submitted, so we dont want to do anything
+  if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE )
+      return;
+
+  // verify this came from the our screen and with proper authorization,
+  // because save_post can be triggered at other times
+  if ( ( isset ( $_POST['author_notes_nonce'] ) ) && ( ! wp_verify_nonce( $_POST['author_notes_nonce'], plugin_basename( __FILE__ ) ) ) )
+      return;
+  // Check permissions
+  if ( !isset($_POST['post_type']) || $_POST['post_type'] != 'fanfic' || !current_user_can('edit_fanfic')) {
+    return;
+  }
+
+  // OK, we're authenticated: we need to find and save the data
+  if ( isset ( $_POST['author_notes'] ) ) {
+    update_post_meta( $post_id, 'author_notes', $_POST['author_notes'] );
+  }
+
+  $wordcount = str_word_count($_POST['content']);
+  update_post_meta($post_id,'wordcount', $wordcount);
+
 }
 
 function init_taxonomies() {
@@ -167,6 +219,7 @@ function init_taxonomies() {
 
 }
 
+
 function update_user_roles() {
   $admin = get_role('admin');
   $admin->add_cap('manage_fandom');
@@ -182,3 +235,5 @@ function update_user_roles() {
 
 add_action( 'init', 'init_posttypes' );
 add_action( 'init', 'init_taxonomies' );
+add_action( 'add_meta_boxes', 'register_meta_boxes' );
+add_action( 'save_post', 'save_author_notes' );
