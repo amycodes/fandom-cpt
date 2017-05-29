@@ -42,7 +42,7 @@ function init_posttypes() {
 				'singular_name' => __( 'Fanfic' )
 			),
 			'public' => true,
-			'has_archive' => true,
+			'has_archive' => false,
 			'rewrite' => array('slug' => 'fanfic'),
       'hierarchical' => true,
       'capability_type' => 'fanfic',
@@ -60,6 +60,7 @@ function init_posttypes() {
 
 function register_meta_boxes() {
   add_meta_box( 'fanfic-author-notes', 'Author Notes', 'metabox_author_notes', 'fanfic', 'normal', 'high');
+  add_meta_box( 'news-extra', 'Other Settings', 'metabox_news_extra', 'news', 'side', 'high');
 }
 
 function metabox_author_notes($post) {
@@ -96,6 +97,44 @@ function save_author_notes($post_id) {
 
   $wordcount = str_word_count($_POST['content']);
   update_post_meta($post_id,'wordcount', $wordcount);
+
+}
+
+function metabox_news_extra($post) {
+  // Use nonce for verification
+  wp_nonce_field( plugin_basename( __FILE__ ), 'news_extra_nonce' );
+
+  $field_value = get_post_meta( $post->ID, 'news_pinned', false );
+  $checked = isset($field_value[0]) && boolval($field_value[0]) ? 'checked="checked"' : '';
+  ?>
+  <p>
+      <label for='pinned' class="prfx-row-title">Pin to Top? </label>
+      <input type='checkbox' name='news-pinned' id='news-pinned' <?php echo $checked; ?>>
+  </p>
+  <?php
+}
+
+function save_news_extra($post_id) {
+  // verify if this is an auto save routine.
+  // If it is our form has not been submitted, so we dont want to do anything
+  if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE )
+      return;
+
+  // verify this came from the our screen and with proper authorization,
+  // because save_post can be triggered at other times
+  if ( ( isset ( $_POST['news_extra_nonce'] ) ) && ( ! wp_verify_nonce( $_POST['news_extra_nonce'], plugin_basename( __FILE__ ) ) ) )
+      return;
+  // Check permissions
+  if ( !isset($_POST['post_type']) || $_POST['post_type'] != 'news' || !current_user_can('edit_news_post')) {
+    // return;
+  }
+
+  // OK, we're authenticated: we need to find and save the data
+  if ( isset ( $_POST['news-pinned'] ) && !empty($_POST['news-pinned']) ) {
+    update_post_meta( $post_id, 'news_pinned', 1 );
+  } else {
+    update_post_meta( $post_id, 'news_pinned', 0 );
+  }
 
 }
 
@@ -237,3 +276,4 @@ add_action( 'init', 'init_posttypes' );
 add_action( 'init', 'init_taxonomies' );
 add_action( 'add_meta_boxes', 'register_meta_boxes' );
 add_action( 'save_post', 'save_author_notes' );
+add_action( 'save_post', 'save_news_extra' );
